@@ -102,12 +102,6 @@ int main(int argc, char **argv) {
 				break;
 			} else if (e.type == SDL_WINDOWEVENT && e.window.event == SDL_WINDOWEVENT_RESIZED) {
 				draw_everything(r, image, font, argv[1]);
-			} else if (e.type == SDL_KEYDOWN && e.key.keysym.scancode == SDL_SCANCODE_SPACE) {
-				SDL_Surface *ws = SDL_GetWindowSurface(w);
-				SDL_SetWindowSize(w, ws->w, ws->w);
-				SDL_RenderClear(r);
-				draw_image(image, r);
-				SDL_RenderPresent(r);
 			} else if (e.type == SDL_WINDOWEVENT && e.window.event == SDL_WINDOWEVENT_EXPOSED) {
 				draw_everything(r, image, font, argv[1]);
 			}
