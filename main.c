@@ -44,20 +44,58 @@ void draw_everything(SDL_Renderer *r, SDL_Texture *img, TTF_Font *font, char *s)
 	SDL_RenderPresent(r);
 }
 
+struct playing {
+	char *song;
+	char *artist;
+	char *cover_path;
+};
+
+int read_playing(struct playing *p, char *path, int buf_len, char **buf) {
+	/* TODO: maybe use inotify(7)? not portable tho */
+	FILE *f = fopen(path, "r");
+	if (!f) {
+		perror("error opening file");
+		return 1;
+	}
+	fseek(f, 0L, SEEK_END);
+	int f_len = ftell(f);
+	if (f_len > buf_len || *buf == NULL)
+		*buf = realloc(*buf, f_len);
+	rewind(f);
+	if (fread(*buf, sizeof(char), f_len, f) < (size_t)f_len) {
+		perror("fread");
+		return 0;
+	}
+	fclose(f);
+
+	p->song = strtok(*buf, "\n");
+	p->artist = strtok(NULL, "\n");
+	p->cover_path = strtok(NULL, "\n");
+	if (p->cover_path == NULL) {
+		fprintf(stderr, "song file has missing lines\n");
+		return 0;
+	}
+
+	return f_len;
+}
+
 int main(int argc, char **argv) {
-	/* TODO: watch a file for artist, track name and image path, 3 lines total 
-	 *       maybe use inotify(7)? not portable tho */
 	if (argc != 2) {
 		fprintf(stderr, "usage: grem [IMAGE_PATH]\n");
 		return 1;
 	}
-	puts(argv[1]);
+
+	struct playing p = {0};
+	char *buf = NULL;
+	int buf_len = read_playing(&p, argv[1], 0, &buf);
+	if (buf_len == 0)
+		return 1;
 
 	if (!IMG_Init(IMG_INIT_JPG)) {
 		fprintf(stderr, "error initializing SDL_image: %s\n", IMG_GetError());
 		return 1;
 	}
-	SDL_Surface *image_surface = IMG_Load(argv[1]);
+	SDL_Surface *image_surface = IMG_Load(p.cover_path);
 	if (!image_surface) {
 		fprintf(stderr, "error loading image: %s\n", IMG_GetError());
 		return 1;
@@ -93,7 +131,7 @@ int main(int argc, char **argv) {
 	}
 
 	SDL_SetRenderDrawColor(r, 34, 34, 34, 255);
-	draw_everything(r, image, font, argv[1]);
+	draw_everything(r, image, font, p.cover_path);
 
 	SDL_Event e;
 	while (1) {
@@ -101,13 +139,14 @@ int main(int argc, char **argv) {
 			if (e.type == SDL_QUIT) {
 				break;
 			} else if (e.type == SDL_WINDOWEVENT && e.window.event == SDL_WINDOWEVENT_RESIZED) {
-				draw_everything(r, image, font, argv[1]);
+				draw_everything(r, image, font, p.cover_path);
 			} else if (e.type == SDL_WINDOWEVENT && e.window.event == SDL_WINDOWEVENT_EXPOSED) {
-				draw_everything(r, image, font, argv[1]);
+				draw_everything(r, image, font, p.cover_path);
 			}
 		}
 	}
 
+	free(buf);
 	SDL_DestroyRenderer(r);
 	SDL_DestroyWindow(w);
 	SDL_DestroyTexture(image);
