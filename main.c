@@ -9,7 +9,7 @@
 #define FONT_PATH "/usr/share/fonts/TTF/DejaVuSans.ttf"
 
 /* TODO: make the drawn image look a little less shit (color profile is off, aliased pixels) */
-int draw_image(SDL_Texture *img, SDL_Renderer *r) {
+int draw_image(SDL_Renderer *r, SDL_Texture *img) {
 	int w = 0, h = 0;
 	SDL_GetRendererOutputSize(r, &w, &h);
 	int min_dimension = w;
@@ -21,27 +21,17 @@ int draw_image(SDL_Texture *img, SDL_Renderer *r) {
 	return min_dimension;
 }
 
-void draw_text(TTF_Font *font, char *s, SDL_Renderer *r, int x) {
-	int h = 0;
-	SDL_GetRendererOutputSize(r, NULL, &h);
-	SDL_Rect pos = {0};
-	pos.x = x;
-	pos.y = h / 2;
+void draw_text(SDL_Renderer *r, TTF_Font *font, char *s, int x, int y) {
+	SDL_Rect pos = { x, y, 0, 0 };
 	SDL_Color white = { 255, 255, 255, 255 };
 	SDL_Surface *text_surface = TTF_RenderText_Blended(font, s, white);
 	pos.w = text_surface->w;
 	pos.h = text_surface->h;
+	pos.y -= pos.h / 2;
 	SDL_Texture *text = SDL_CreateTextureFromSurface(r, text_surface);
 	SDL_RenderCopy(r, text, NULL, &pos);
 	SDL_DestroyTexture(text);
 	SDL_FreeSurface(text_surface);
-}
-
-void draw_everything(SDL_Renderer *r, SDL_Texture *img, TTF_Font *font, char *s) {
-	SDL_RenderClear(r);
-	int x = draw_image(img, r);
-	draw_text(font, s, r, x + 10);
-	SDL_RenderPresent(r);
 }
 
 struct playing {
@@ -49,6 +39,18 @@ struct playing {
 	char *artist;
 	char *cover_path;
 };
+
+void draw_everything(SDL_Renderer *r, SDL_Texture *img, TTF_Font *font, struct playing *p) {
+	SDL_RenderClear(r);
+	int x = draw_image(r, img) + 10;
+	int w = 0, h = 0;
+	SDL_GetRendererOutputSize(r, &w, &h);
+	/* TODO: center-align text + adjust the gap + have different text color, size for each,
+	 *       maybe make a struct to pass to draw_text with all of these properties */
+	draw_text(r, font, p->song, x, h * 1/4);
+	draw_text(r, font, p->artist, x, h * 3/4);
+	SDL_RenderPresent(r);
+}
 
 int read_playing(struct playing *p, char *path, int buf_len, char **buf) {
 	/* TODO: maybe use inotify(7)? not portable tho */
@@ -131,7 +133,7 @@ int main(int argc, char **argv) {
 	}
 
 	SDL_SetRenderDrawColor(r, 34, 34, 34, 255);
-	draw_everything(r, image, font, p.cover_path);
+	draw_everything(r, image, font, &p);
 
 	SDL_Event e;
 	while (1) {
@@ -139,9 +141,9 @@ int main(int argc, char **argv) {
 			if (e.type == SDL_QUIT) {
 				break;
 			} else if (e.type == SDL_WINDOWEVENT && e.window.event == SDL_WINDOWEVENT_RESIZED) {
-				draw_everything(r, image, font, p.cover_path);
+				draw_everything(r, image, font, &p);
 			} else if (e.type == SDL_WINDOWEVENT && e.window.event == SDL_WINDOWEVENT_EXPOSED) {
-				draw_everything(r, image, font, p.cover_path);
+				draw_everything(r, image, font, &p);
 			}
 		}
 	}
