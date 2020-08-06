@@ -8,28 +8,39 @@
 
 #define FONT_PATH "/usr/share/fonts/TTF/DejaVuSans.ttf"
 
-int draw_image(SDL_Surface *img, SDL_Window *w) {
-	SDL_Surface *window_surface = SDL_GetWindowSurface(w);
-
-	int min_dimension = window_surface->w;
-	if (window_surface->h < min_dimension)
-		min_dimension = window_surface->h;
+/* TODO: make the drawn image look a little less shit (color profile is off, aliased pixels) */
+int draw_image(SDL_Texture *img, SDL_Renderer *r) {
+	int w = 0, h = 0;
+	SDL_GetRendererOutputSize(r, &w, &h);
+	int min_dimension = w;
+	if (h < min_dimension)
+		min_dimension = h;
 
 	SDL_Rect blit_area = { 0, 0, min_dimension, min_dimension };
-	SDL_BlitScaled(img, NULL, window_surface, &blit_area);
-	SDL_UpdateWindowSurface(w);
+	SDL_RenderCopy(r, img, NULL, &blit_area);
 	return min_dimension;
 }
 
-void draw_text(TTF_Font *font, char *s, SDL_Window *w, int x) {
-	SDL_Surface *window_surface = SDL_GetWindowSurface(w);
+/* FIXME: text not actually drawing */
+void draw_text(TTF_Font *font, char *s, SDL_Renderer *r, int x) {
+	int h = 0;
+	SDL_GetRendererOutputSize(r, NULL, &h);
 	SDL_Rect pos = {0};
 	pos.x = x;
-	pos.y = window_surface->h / 2;
+	pos.y = h / 2;
 	SDL_Color white = { 255, 255, 255, 255 };
-	SDL_Surface *text = TTF_RenderText_Solid(font, s, white);
-	SDL_BlitSurface(text, NULL, window_surface, &pos);
-	SDL_UpdateWindowSurface(w);
+	SDL_Surface *text_surface = TTF_RenderText_Solid(font, s, white);
+	SDL_Texture *text = SDL_CreateTextureFromSurface(r, text_surface);
+	SDL_RenderCopy(r, text, NULL, &pos);
+	SDL_DestroyTexture(text);
+	SDL_FreeSurface(text_surface);
+}
+
+void draw_everything(SDL_Renderer *r, SDL_Texture *img, TTF_Font *font, char *s) {
+	SDL_RenderClear(r);
+	int x = draw_image(img, r);
+	draw_text(font, s, r, x + 10);
+	SDL_RenderPresent(r);
 }
 
 int main(int argc, char **argv) {
@@ -45,8 +56,8 @@ int main(int argc, char **argv) {
 		fprintf(stderr, "error initializing SDL_image: %s\n", IMG_GetError());
 		return 1;
 	}
-	SDL_Surface *image = IMG_Load(argv[1]);
-	if (!image) {
+	SDL_Surface *image_surface = IMG_Load(argv[1]);
+	if (!image_surface) {
 		fprintf(stderr, "error loading image: %s\n", IMG_GetError());
 		return 1;
 	}
@@ -66,15 +77,22 @@ int main(int argc, char **argv) {
 		return 1;
 	}
 
-	SDL_Window *w = SDL_CreateWindow("grem", SDL_WINDOWPOS_CENTERED, SDL_WINDOWPOS_CENTERED, WINDOW_MIN_WIDTH, WINDOW_MIN_HEIGHT, SDL_WINDOW_RESIZABLE);
-	if (!w) {
+	SDL_Window *w;
+	SDL_Renderer *r;
+	if (SDL_CreateWindowAndRenderer(WINDOW_MIN_WIDTH, WINDOW_MIN_HEIGHT, SDL_WINDOW_RESIZABLE, &w, &r)) {
 		SDL_Log("error creating window: %s", SDL_GetError());
 		return 1;
 	}
 	SDL_SetWindowMinimumSize(w, WINDOW_MIN_WIDTH, WINDOW_MIN_HEIGHT);
 
-	int x = draw_image(image, w);
-	draw_text(font, argv[1], w, x + 10);
+	SDL_Texture *image = SDL_CreateTextureFromSurface(r, image_surface);
+	if (!image) {
+		SDL_Log("error loading image as texture: %s", SDL_GetError());
+		return 1;
+	}
+
+	SDL_SetRenderDrawColor(r, 0, 0, 0, 255);
+	draw_everything(r, image, font, argv[1]);
 
 	SDL_Event e;
 	while (1) {
@@ -82,18 +100,21 @@ int main(int argc, char **argv) {
 			if (e.type == SDL_QUIT) {
 				break;
 			} else if (e.type == SDL_WINDOWEVENT && e.window.event == SDL_WINDOWEVENT_RESIZED) {
-				x = draw_image(image, w);
-				draw_text(font, argv[1], w, x + 10);
+				draw_everything(r, image, font, argv[1]);
 			} else if (e.type == SDL_KEYDOWN && e.key.keysym.scancode == SDL_SCANCODE_SPACE) {
 				SDL_Surface *ws = SDL_GetWindowSurface(w);
 				SDL_SetWindowSize(w, ws->w, ws->w);
-				draw_image(image, w);
+				SDL_RenderClear(r);
+				draw_image(image, r);
+				SDL_RenderPresent(r);
 			}
 		}
 	}
 
+	SDL_DestroyRenderer(r);
 	SDL_DestroyWindow(w);
-	SDL_FreeSurface(image);
+	SDL_DestroyTexture(image);
+	SDL_FreeSurface(image_surface);
 	IMG_Quit();
 	TTF_CloseFont(font);
 	TTF_Quit();
