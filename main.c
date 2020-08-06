@@ -28,7 +28,7 @@ void draw_text(TTF_Font *font, char *s, SDL_Renderer *r, int x) {
 	pos.x = x;
 	pos.y = h / 2;
 	SDL_Color white = { 255, 255, 255, 255 };
-	SDL_Surface *text_surface = TTF_RenderText_Solid(font, s, white);
+	SDL_Surface *text_surface = TTF_RenderText_Blended(font, s, white);
 	pos.w = text_surface->w;
 	pos.h = text_surface->h;
 	SDL_Texture *text = SDL_CreateTextureFromSurface(r, text_surface);
@@ -92,7 +92,7 @@ int main(int argc, char **argv) {
 		return 1;
 	}
 
-	SDL_SetRenderDrawColor(r, 0, 0, 0, 255);
+	SDL_SetRenderDrawColor(r, 34, 34, 34, 255);
 	draw_everything(r, image, font, argv[1]);
 
 	SDL_Event e;
