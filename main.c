@@ -107,6 +107,8 @@ int main(int argc, char **argv) {
 				SDL_RenderClear(r);
 				draw_image(image, r);
 				SDL_RenderPresent(r);
+			} else if (e.type == SDL_WINDOWEVENT && e.window.event == SDL_WINDOWEVENT_EXPOSED) {
+				draw_everything(r, image, font, argv[1]);
 			}
 		}
 	}
