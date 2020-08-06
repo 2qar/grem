@@ -21,7 +21,6 @@ int draw_image(SDL_Texture *img, SDL_Renderer *r) {
 	return min_dimension;
 }
 
-/* FIXME: text not actually drawing */
 void draw_text(TTF_Font *font, char *s, SDL_Renderer *r, int x) {
 	int h = 0;
 	SDL_GetRendererOutputSize(r, NULL, &h);
@@ -30,6 +29,8 @@ void draw_text(TTF_Font *font, char *s, SDL_Renderer *r, int x) {
 	pos.y = h / 2;
 	SDL_Color white = { 255, 255, 255, 255 };
 	SDL_Surface *text_surface = TTF_RenderText_Solid(font, s, white);
+	pos.w = text_surface->w;
+	pos.h = text_surface->h;
 	SDL_Texture *text = SDL_CreateTextureFromSurface(r, text_surface);
 	SDL_RenderCopy(r, text, NULL, &pos);
 	SDL_DestroyTexture(text);
