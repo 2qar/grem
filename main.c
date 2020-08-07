@@ -96,7 +96,7 @@ int read_playing(struct playing *p, char *path, int buf_len, char **buf) {
 	FILE *f = fopen(path, "r");
 	if (!f) {
 		perror("error opening file");
-		return 1;
+		return 0;
 	}
 	fseek(f, 0L, SEEK_END);
 	int f_len = ftell(f);
