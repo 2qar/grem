@@ -10,6 +10,25 @@
 
 #define FONT_PATH "/usr/share/fonts/TTF/DejaVuSans.ttf"
 
+int load_image(SDL_Renderer *r, char *path, SDL_Surface **s, SDL_Texture **t) {
+	*s = IMG_Load(path);
+	if (!s) {
+		fprintf(stderr, "error loading image: %s\n", IMG_GetError());
+		return 1;
+	}
+	*t = SDL_CreateTextureFromSurface(r, *s);
+	if (!t) {
+		SDL_Log("error loading image as texture: %s", SDL_GetError());
+		return 1;
+	}
+	return 0;
+}
+
+void free_image(SDL_Surface *s, SDL_Texture *t) {
+	SDL_DestroyTexture(t);
+	SDL_FreeSurface(s);
+}
+
 /* TODO: make the drawn image look a little less shit (color profile is off, aliased pixels) */
 int draw_image(SDL_Renderer *r, SDL_Texture *img) {
 	int w = 0, h = 0;
@@ -133,16 +152,10 @@ int main(int argc, char **argv) {
 		fprintf(stderr, "error initializing SDL_image: %s\n", IMG_GetError());
 		return 1;
 	}
-	SDL_Surface *image_surface = IMG_Load(p.cover_path);
-	if (!image_surface) {
-		fprintf(stderr, "error loading image: %s\n", IMG_GetError());
+	SDL_Surface *image_surface = NULL;
+	SDL_Texture *image = NULL;
+	if (load_image(r, p.cover_path, &image_surface, &image))
 		return 1;
-	}
-	SDL_Texture *image = SDL_CreateTextureFromSurface(r, image_surface);
-	if (!image) {
-		SDL_Log("error loading image as texture: %s", SDL_GetError());
-		return 1;
-	}
 
 	SDL_SetRenderDrawColor(r, 34, 34, 34, 255);
 	draw_everything(r, image, font, &p);
@@ -162,21 +175,28 @@ int main(int argc, char **argv) {
 			} else if (e.type == SDL_WINDOWEVENT && (e.window.event == SDL_WINDOWEVENT_RESIZED || e.window.event == SDL_WINDOWEVENT_EXPOSED)) {
 				draw_everything(r, image, font, &p);
 			} else if (e.type == SDL_USEREVENT) {
+				int old_name_len = strlen(p.cover_path);
+				char *old_name = malloc(sizeof(char) * old_name_len);
+				snprintf(old_name, old_name_len, "%s", p.cover_path);
 				buf_len = read_playing(&p, argv[1], buf_len, &buf);
 				if (buf_len == 0)
 					break;
-				/* TODO: reload the image */
+				if (strncmp(p.cover_path, old_name, old_name_len) != 0) {
+					free_image(image_surface, image);
+					if (load_image(r, p.cover_path, &image_surface, &image))
+						break;
+				}
 				draw_everything(r, image, font, &p);
+				free(old_name);
 			}
 		}
 	}
 
 	close(ifd);
 	free(buf);
+	free_image(image_surface, image);
 	SDL_DestroyRenderer(r);
 	SDL_DestroyWindow(w);
-	SDL_DestroyTexture(image);
-	SDL_FreeSurface(image_surface);
 	IMG_Quit();
 	TTF_CloseFont(font);
 	TTF_Quit();
