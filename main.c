@@ -116,7 +116,7 @@ int watch_file(void *ifd) {
 
 int main(int argc, char **argv) {
 	if (argc != 2) {
-		fprintf(stderr, "usage: grem [IMAGE_PATH]\n");
+		fprintf(stderr, "usage: grem [PLAYING_FILE]\n");
 		return 1;
 	}
 
