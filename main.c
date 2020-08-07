@@ -1,4 +1,6 @@
 #include <stdio.h>
+#include <unistd.h>
+#include <sys/inotify.h>
 #include <SDL2/SDL.h>
 #include <SDL2/SDL_image.h>
 #include <SDL2/SDL_ttf.h>
@@ -53,7 +55,6 @@ void draw_everything(SDL_Renderer *r, SDL_Texture *img, TTF_Font *font, struct p
 }
 
 int read_playing(struct playing *p, char *path, int buf_len, char **buf) {
-	/* TODO: maybe use inotify(7)? not portable tho */
 	FILE *f = fopen(path, "r");
 	if (!f) {
 		perror("error opening file");
@@ -81,6 +82,19 @@ int read_playing(struct playing *p, char *path, int buf_len, char **buf) {
 	return f_len;
 }
 
+int watch_file(void *ifd) {
+	int *in_fd = (int *) ifd;
+	struct inotify_event e;
+	int n;
+	while ((n = read(*in_fd, &e, sizeof(struct inotify_event))) > 0) {
+		/* FIXME: only firing once */
+		SDL_Event event;
+		event.type = SDL_USEREVENT;
+		SDL_PushEvent(&event);
+	}
+	return 0;
+}
+
 int main(int argc, char **argv) {
 	if (argc != 2) {
 		fprintf(stderr, "usage: grem [IMAGE_PATH]\n");
@@ -92,16 +106,6 @@ int main(int argc, char **argv) {
 	int buf_len = read_playing(&p, argv[1], 0, &buf);
 	if (buf_len == 0)
 		return 1;
-
-	if (!IMG_Init(IMG_INIT_JPG)) {
-		fprintf(stderr, "error initializing SDL_image: %s\n", IMG_GetError());
-		return 1;
-	}
-	SDL_Surface *image_surface = IMG_Load(p.cover_path);
-	if (!image_surface) {
-		fprintf(stderr, "error loading image: %s\n", IMG_GetError());
-		return 1;
-	}
 
 	if (TTF_Init() < 0) {
 		fprintf(stderr, "error initializing SDL_ttf: %s\n", TTF_GetError());
@@ -117,7 +121,6 @@ int main(int argc, char **argv) {
 		SDL_Log("error initializing SDL: %s", SDL_GetError());
 		return 1;
 	}
-
 	SDL_Window *w;
 	SDL_Renderer *r;
 	if (SDL_CreateWindowAndRenderer(WINDOW_MIN_WIDTH, WINDOW_MIN_HEIGHT, SDL_WINDOW_RESIZABLE, &w, &r)) {
@@ -126,6 +129,15 @@ int main(int argc, char **argv) {
 	}
 	SDL_SetWindowMinimumSize(w, WINDOW_MIN_WIDTH, WINDOW_MIN_HEIGHT);
 
+	if (!IMG_Init(IMG_INIT_JPG)) {
+		fprintf(stderr, "error initializing SDL_image: %s\n", IMG_GetError());
+		return 1;
+	}
+	SDL_Surface *image_surface = IMG_Load(p.cover_path);
+	if (!image_surface) {
+		fprintf(stderr, "error loading image: %s\n", IMG_GetError());
+		return 1;
+	}
 	SDL_Texture *image = SDL_CreateTextureFromSurface(r, image_surface);
 	if (!image) {
 		SDL_Log("error loading image as texture: %s", SDL_GetError());
@@ -135,19 +147,31 @@ int main(int argc, char **argv) {
 	SDL_SetRenderDrawColor(r, 34, 34, 34, 255);
 	draw_everything(r, image, font, &p);
 
+	int ifd = inotify_init();
+	int wd = inotify_add_watch(ifd, argv[1], IN_MODIFY);
+	if (wd == -1)
+		perror("error adding watch to file, song info won't update");
+	SDL_Thread *t = SDL_CreateThread(watch_file, "watch_song", &ifd);
+	SDL_DetachThread(t);
+
 	SDL_Event e;
 	while (1) {
 		if (SDL_WaitEvent(&e)) {
 			if (e.type == SDL_QUIT) {
 				break;
-			} else if (e.type == SDL_WINDOWEVENT && e.window.event == SDL_WINDOWEVENT_RESIZED) {
+			} else if (e.type == SDL_WINDOWEVENT && (e.window.event == SDL_WINDOWEVENT_RESIZED || e.window.event == SDL_WINDOWEVENT_EXPOSED)) {
 				draw_everything(r, image, font, &p);
-			} else if (e.type == SDL_WINDOWEVENT && e.window.event == SDL_WINDOWEVENT_EXPOSED) {
+			} else if (e.type == SDL_USEREVENT) {
+				buf_len = read_playing(&p, argv[1], buf_len, &buf);
+				if (buf_len == 0)
+					break;
+				/* TODO: reload the image */
 				draw_everything(r, image, font, &p);
 			}
 		}
 	}
 
+	close(ifd);
 	free(buf);
 	SDL_DestroyRenderer(r);
 	SDL_DestroyWindow(w);
