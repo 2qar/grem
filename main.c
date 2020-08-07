@@ -106,7 +106,6 @@ int watch_file(void *ifd) {
 	struct inotify_event e;
 	int n;
 	while ((n = read(*in_fd, &e, sizeof(struct inotify_event))) > 0) {
-		/* FIXME: only firing once */
 		SDL_Event event;
 		event.type = SDL_USEREVENT;
 		SDL_PushEvent(&event);
@@ -164,8 +163,7 @@ int main(int argc, char **argv) {
 	int wd = inotify_add_watch(ifd, argv[1], IN_MODIFY);
 	if (wd == -1)
 		perror("error adding watch to file, song info won't update");
-	SDL_Thread *t = SDL_CreateThread(watch_file, "watch_song", &ifd);
-	SDL_DetachThread(t);
+	SDL_CreateThread(watch_file, "watch_song", &ifd);
 
 	SDL_Event e;
 	while (1) {
