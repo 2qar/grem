@@ -5,6 +5,9 @@
 #include <SDL2/SDL_image.h>
 #include <SDL2/SDL_ttf.h>
 
+#define SONG_TITLE_FONT_SIZE 24
+#define ARTIST_FONT_SIZE     16
+
 #define WINDOW_MIN_WIDTH  400
 #define WINDOW_MIN_HEIGHT 150
 
@@ -38,10 +41,16 @@ int draw_image(SDL_Renderer *r, SDL_Texture *img) {
 	return min_dimension;
 }
 
-void draw_text(SDL_Renderer *r, TTF_Font *font, char *s, int x, int y) {
-	SDL_Rect pos = { x, y, 0, 0 };
+struct text_prop {
+	char *text;
+	TTF_Font *font;
+	int x, y;
+};
+
+void draw_text(SDL_Renderer *r, struct text_prop *tp) {
+	SDL_Rect pos = { tp->x, tp->y, 0, 0 };
 	SDL_Color white = { 255, 255, 255, 255 };
-	SDL_Surface *text_surface = TTF_RenderText_Blended(font, s, white);
+	SDL_Surface *text_surface = TTF_RenderText_Blended(tp->font, tp->text, white);
 	pos.w = text_surface->w;
 	pos.h = text_surface->h;
 	pos.y -= pos.h / 2;
@@ -57,15 +66,29 @@ struct playing {
 	char *cover_path;
 };
 
-void draw_everything(SDL_Renderer *r, SDL_Texture *img, TTF_Font *font, struct playing *p) {
+struct view {
+	TTF_Font *song_font;
+	TTF_Font *artist_font;
+	SDL_Texture *cover;
+};
+
+void draw_everything(SDL_Renderer *r, struct view *v, struct playing *p) {
 	SDL_RenderClear(r);
-	int x = draw_image(r, img) + 10;
+	struct text_prop tp;
+	tp.x = draw_image(r, v->cover) + 10;
 	int w = 0, h = 0;
 	SDL_GetRendererOutputSize(r, &w, &h);
-	/* TODO: center-align text + adjust the gap + have different text color, size for each,
-	 *       maybe make a struct to pass to draw_text with all of these properties */
-	draw_text(r, font, p->song, x, h * 1/4);
-	draw_text(r, font, p->artist, x, h * 3/4);
+
+	tp.text = p->song;
+	tp.font = v->song_font;
+	tp.y = h *1/4;
+	draw_text(r, &tp);
+
+	tp.text = p->artist;
+	tp.font = v->artist_font;
+	tp.y = h * 3/4;
+	draw_text(r, &tp);
+
 	SDL_RenderPresent(r);
 }
 
@@ -121,13 +144,19 @@ int main(int argc, char **argv) {
 	int buf_len = read_playing(&p, argv[1], 0, &buf);
 	if (buf_len == 0)
 		return 1;
+	struct view v = {0};
 
 	if (TTF_Init() < 0) {
 		fprintf(stderr, "error initializing SDL_ttf: %s\n", TTF_GetError());
 		return 1;
 	}
-	TTF_Font *font = TTF_OpenFont(FONT_PATH, 16);
-	if (!font) {
+	v.song_font = TTF_OpenFont(FONT_PATH, SONG_TITLE_FONT_SIZE);
+	if (!v.song_font) {
+		fprintf(stderr, "error opening font: %s\n", TTF_GetError());
+		return 1;
+	}
+	v.artist_font = TTF_OpenFont(FONT_PATH, ARTIST_FONT_SIZE);
+	if (!v.artist_font) {
 		fprintf(stderr, "error opening font: %s\n", TTF_GetError());
 		return 1;
 	}
@@ -148,12 +177,11 @@ int main(int argc, char **argv) {
 		fprintf(stderr, "error initializing SDL_image: %s\n", IMG_GetError());
 		return 1;
 	}
-	SDL_Texture *image = NULL;
-	if (load_image(r, p.cover_path, &image))
+	if (load_image(r, p.cover_path, &v.cover))
 		return 1;
 
 	SDL_SetRenderDrawColor(r, 34, 34, 34, 255);
-	draw_everything(r, image, font, &p);
+	draw_everything(r, &v, &p);
 
 	int ifd = inotify_init();
 	int wd = inotify_add_watch(ifd, argv[1], IN_MODIFY);
@@ -167,7 +195,7 @@ int main(int argc, char **argv) {
 			if (e.type == SDL_QUIT) {
 				break;
 			} else if (e.type == SDL_WINDOWEVENT && (e.window.event == SDL_WINDOWEVENT_RESIZED || e.window.event == SDL_WINDOWEVENT_EXPOSED)) {
-				draw_everything(r, image, font, &p);
+				draw_everything(r, &v, &p);
 			} else if (e.type == SDL_USEREVENT) {
 				int old_name_len = strlen(p.cover_path);
 				char *old_name = malloc(sizeof(char) * old_name_len);
@@ -176,11 +204,11 @@ int main(int argc, char **argv) {
 				if (buf_len == 0)
 					break;
 				if (strncmp(p.cover_path, old_name, old_name_len) != 0) {
-					SDL_DestroyTexture(image);
-					if (load_image(r, p.cover_path, &image))
+					SDL_DestroyTexture(v.cover);
+					if (load_image(r, p.cover_path, &v.cover))
 						break;
 				}
-				draw_everything(r, image, font, &p);
+				draw_everything(r, &v, &p);
 				free(old_name);
 			}
 		}
@@ -188,11 +216,12 @@ int main(int argc, char **argv) {
 
 	close(ifd);
 	free(buf);
-	SDL_DestroyTexture(image);
+	SDL_DestroyTexture(v.cover);
 	SDL_DestroyRenderer(r);
 	SDL_DestroyWindow(w);
 	IMG_Quit();
-	TTF_CloseFont(font);
+	TTF_CloseFont(v.song_font);
+	TTF_CloseFont(v.artist_font);
 	TTF_Quit();
 	SDL_Quit();
 	return 0;
