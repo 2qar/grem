@@ -10,23 +10,19 @@
 
 #define FONT_PATH "/usr/share/fonts/TTF/DejaVuSans.ttf"
 
-int load_image(SDL_Renderer *r, char *path, SDL_Surface **s, SDL_Texture **t) {
-	*s = IMG_Load(path);
+int load_image(SDL_Renderer *r, char *path, SDL_Texture **t) {
+	SDL_Surface *s = IMG_Load(path);
 	if (!s) {
 		fprintf(stderr, "error loading image: %s\n", IMG_GetError());
 		return 1;
 	}
-	*t = SDL_CreateTextureFromSurface(r, *s);
+	*t = SDL_CreateTextureFromSurface(r, s);
 	if (!t) {
 		SDL_Log("error loading image as texture: %s", SDL_GetError());
 		return 1;
 	}
-	return 0;
-}
-
-void free_image(SDL_Surface *s, SDL_Texture *t) {
-	SDL_DestroyTexture(t);
 	SDL_FreeSurface(s);
+	return 0;
 }
 
 /* TODO: make the drawn image look a little less shit (color profile is off, aliased pixels) */
@@ -50,9 +46,9 @@ void draw_text(SDL_Renderer *r, TTF_Font *font, char *s, int x, int y) {
 	pos.h = text_surface->h;
 	pos.y -= pos.h / 2;
 	SDL_Texture *text = SDL_CreateTextureFromSurface(r, text_surface);
+	SDL_FreeSurface(text_surface);
 	SDL_RenderCopy(r, text, NULL, &pos);
 	SDL_DestroyTexture(text);
-	SDL_FreeSurface(text_surface);
 }
 
 struct playing {
@@ -82,6 +78,7 @@ int read_playing(struct playing *p, char *path, int buf_len, char **buf) {
 	fseek(f, 0L, SEEK_END);
 	int f_len = ftell(f);
 	if (f_len > buf_len || *buf == NULL)
+		// possible undefined behaviour w/ cover_path's name, idk
 		*buf = realloc(*buf, f_len);
 	rewind(f);
 	if (fread(*buf, sizeof(char), f_len, f) < (size_t)f_len) {
@@ -151,9 +148,8 @@ int main(int argc, char **argv) {
 		fprintf(stderr, "error initializing SDL_image: %s\n", IMG_GetError());
 		return 1;
 	}
-	SDL_Surface *image_surface = NULL;
 	SDL_Texture *image = NULL;
-	if (load_image(r, p.cover_path, &image_surface, &image))
+	if (load_image(r, p.cover_path, &image))
 		return 1;
 
 	SDL_SetRenderDrawColor(r, 34, 34, 34, 255);
@@ -180,8 +176,8 @@ int main(int argc, char **argv) {
 				if (buf_len == 0)
 					break;
 				if (strncmp(p.cover_path, old_name, old_name_len) != 0) {
-					free_image(image_surface, image);
-					if (load_image(r, p.cover_path, &image_surface, &image))
+					SDL_DestroyTexture(image);
+					if (load_image(r, p.cover_path, &image))
 						break;
 				}
 				draw_everything(r, image, font, &p);
@@ -192,7 +188,7 @@ int main(int argc, char **argv) {
 
 	close(ifd);
 	free(buf);
-	free_image(image_surface, image);
+	SDL_DestroyTexture(image);
 	SDL_DestroyRenderer(r);
 	SDL_DestroyWindow(w);
 	IMG_Quit();
